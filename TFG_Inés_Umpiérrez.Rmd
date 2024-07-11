@@ -1,0 +1,1094 @@
+---
+title: "TFG"
+author: "Inés Umpiérrez"
+output:
+   html_document:
+     toc: TRUE
+     toc_depth: 7
+     toc_float: TRUE
+     theme: yeti
+---
+
+```{r setup, include=FALSE, warning=F, message=F}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+# **PREPROCESAMIENTO DE LOS DATOS**
+
+
+Se cargan de los datos.
+
+NOTA: El archivo de datos original "data" no se encuentra en el GitHub debido a que, incluso comprimido, su peso es demasiado grande y no permite su subida. Para la descarga de los datos originales se debe ir al siguiente enlace: https://www.kaggle.com/datasets/tunguz/big-five-personality-test
+
+
+
+```{r}
+data = read.csv("data.csv",sep="\t")
+
+# Se hace una copia de los datos
+
+datos = data
+```
+
+
+## Descripción de los datos y limpieza de datos
+
+
+### Formatos
+
+Se ven los formatos de las variables.
+
+```{r}
+str(datos, list.len = Inf)
+```
+
+Se crea la variable year y se sustituye por dateload.
+
+```{r}
+library(dplyr)
+
+year = c(as.numeric(substr(datos$dateload, 1, 4)))
+datos$dateload = year
+datos = datos %>%
+  rename("year" = "dateload")
+```
+
+
+Se ajustan los cambios en los formatos necesarios.
+
+```{r}
+datos$country = as.factor(datos$country)
+#datos$year = as.factor(datos$year)
+
+
+col = names(datos[,-108]) # Se descarta la variable country 
+#col = names(datos[,-c(101,108)]) # Se descartan las variables country y year
+
+datos = datos %>%
+  mutate_at(vars(col), ~ as.numeric(.))
+
+```
+
+
+Se comprueban los nuevos formatos de las variables.
+
+```{r}
+str(datos, list.len = Inf)
+```
+
+
+Se agrupan las variables.
+
+```{r}
+col_cuestionario = names(datos[,c(1:50)])
+col_tiempo = names(datos[,c(51:100,104:106)])
+col_individuo = names(datos[,c(101:103,107:110)])
+```
+
+
+### Nulos
+
+Frecuencia absoluta de nulos por columna.
+
+```{r}
+colSums(is.na(datos))
+```
+
+
+Frecuencia relativa de nulos por columna.
+
+```{r}
+round(colSums(is.na(datos))/nrow(datos),4)
+```
+
+
+Se eliminan los nulos.
+
+```{r}
+n_antes = nrow(datos)
+
+datos = na.omit(datos)
+
+n_despues = nrow(datos)
+
+cat("n_antes:",n_antes,
+    "\nn_despues:",n_despues,
+    "\nFilas eliminadas:",n_antes-n_despues)
+```
+
+
+Se comprueba que no queden nulos.
+
+```{r}
+colSums(is.na(datos))
+```
+
+
+### Valores vacíos
+
+Sólo ocurre con las variables cuyos valores se almacenan como texto: country.
+
+Se visualizan los valores únicos de country.
+
+```{r}
+unique(datos$country)
+```
+
+Se comprueba que ningún valor sea un valor vacío.
+
+```{r}
+library(stringr)
+
+datos[str_squish(datos$country) == "",]
+```
+
+
+### Variables con valor constante
+
+#### Categóricas y cuantitativas discretas 
+
+```{r}
+cat_disc = datos[,c(col_cuestionario,"year","IPC","country")]
+sapply(cat_disc, function(x) sort(unique(x)))
+```
+
+#### Cuantitativas
+
+```{r}
+cuant = datos[,c(col_tiempo,"screenw","screenh","lat_appx_lots_of_err","long_appx_lots_of_err")]
+summary(cuant)
+```
+
+
+
+### Valores inválidos
+
+#### Preguntas cuestionario
+
+Sólo pueden ser 1, 2, 3, 4 y 5.
+
+```{r}
+n_antes = nrow(datos)
+
+aux = c()
+for(columna in col_cuestionario){
+  n_aux = nrow(datos)
+  datos = datos[datos[,columna] %in% c(1,2,3,4,5),]
+  aux = c(aux,n_aux-nrow(datos))
+  cat(columna,":",n_aux-nrow(datos),"\n")
+}
+
+cat("Total:",sum(aux),"\n")
+n_despues = nrow(datos)
+
+cat("n_antes:",n_antes,
+    "\nn_despues:",n_despues,
+    "\nFilas eliminadas:",n_antes-n_despues)
+```
+
+
+#### Tiempos
+
+No pueden ser negativos.
+
+```{r}
+n_antes = nrow(datos)
+
+aux = c()
+for(columna in col_tiempo){
+  n_aux = nrow(datos)
+  datos = datos[datos[,columna] >= 0,]
+  aux = c(aux,n_aux-nrow(datos))
+  cat(columna,":",n_aux-nrow(datos),"\n")
+}
+
+n_despues = nrow(datos)
+
+cat("n_antes:",n_antes,
+    "\nn_despues:",n_despues,
+    "\nFilas eliminadas:",n_antes-n_despues)
+```
+
+
+#### Pantallas
+
+No pueden ser 0.
+
+```{r}
+n_antes = nrow(datos)
+
+aux = c()
+for(columna in c("screenw","screenh")){
+  n_aux = nrow(datos)
+  datos = datos[datos[,columna] > 0,]
+  aux = c(aux,n_aux-nrow(datos))
+  cat(columna,n_aux-nrow(datos),"\n")
+}
+
+n_despues = nrow(datos)
+
+cat("n_antes:",n_antes,
+    "\nn_despues:",n_despues,
+    "\nFilas eliminadas:",n_antes-n_despues)
+
+```
+
+
+#### Países
+
+No puede ser "NONE".
+
+```{r}
+#paises = read.csv("paises.csv",sep=",")
+```
+
+
+```{r}
+table(datos$country)
+```
+
+
+```{r}
+n_antes = nrow(datos)
+
+aux=c()
+n_aux = nrow(datos)
+datos = datos[!datos[,"country"] %in% c("NONE"),]
+aux = c(aux,n_aux-nrow(datos))
+cat("country:",n_aux-nrow(datos),"\n")
+
+n_despues = nrow(datos)
+
+
+datos = droplevels(datos)
+
+cat("n_antes:",n_antes,
+    "\nn_despues:",n_despues,
+    "\nFilas eliminadas:",n_antes-n_despues)
+```
+
+
+
+### Filtrado
+
+#### IPC
+
+Se filtra por IPC = 1.
+
+```{r}
+n_antes = nrow(datos)
+
+datos = datos[datos$IPC == 1,]
+
+n_despues = nrow(datos)
+cat("n_antes:",n_antes,
+    "\nn_despues:",n_despues,
+    "\nFilas eliminadas:",n_antes-n_despues)
+```
+
+
+#### Tiempos
+
+Se comprueba la existencia de valores poco verosímiles.
+
+```{r}
+summary(datos[,col_tiempo[1:50]]/1000) # Segundos
+```
+
+```{r}
+summary(datos[,col_tiempo[51:53]]) # Segundos
+```
+
+```{r}
+cat("Columna  P1%  P5%  P10%","\n\n")
+for(columna in col_tiempo){
+  if(columna %in% c("introelapse","testelapse","endelapse")){
+    cat(columna,":",sprintf("%.2f",quantile(datos[,columna],c(0.01,0.05,0.1))),"\n")
+  }else{
+    cat(columna,":",sprintf("%.2f",quantile(datos[,columna]/1000,c(0.01,0.05,0.1))),"\n")
+  }
+}
+```
+
+
+Se filtra por testelapse >= 250.
+
+```{r}
+n_antes = nrow(datos)
+datos = datos[datos$testelapse >= 250,]
+n_despues = nrow(datos)
+
+cat("n_antes:",n_antes,
+    "\nn_despues:",n_despues,
+    "\nFilas eliminadas:",n_antes-n_despues)
+```
+
+
+### Preguntas de control
+
+Se filtra por las preguntas de control correctamente superadas.
+
+```{r}
+n_antes = nrow(datos)
+n_despues = c(n_antes)
+
+
+# Misma dirección
+
+datos = datos[!(abs(datos$EST7 - datos$EST8) > 2),]
+n_despues = c(n_despues,nrow(datos))
+
+datos = datos[!(abs(datos$AGR4 - datos$AGR9) > 2),]
+n_despues = c(n_despues,nrow(datos))
+
+
+
+# Diferente dirección
+
+datos =  datos[!(abs(datos$EXT8 - datos$EXT9) < 2),]
+n_despues = c(n_despues,nrow(datos))
+
+datos =  datos[!(abs(datos$EST4 - datos$EST10) < 2),]
+n_despues = c(n_despues,nrow(datos))
+
+datos =  datos[!(abs(datos$AGR2 - datos$AGR7) < 2),]
+n_despues = c(n_despues,nrow(datos))
+
+datos =  datos[!(abs(datos$CSN5 - datos$CSN8) < 2),]
+n_despues = c(n_despues,nrow(datos))
+
+datos =  datos[!(abs(datos$OPN3 - datos$OPN6) < 2),]
+n_despues = c(n_despues,nrow(datos))
+
+
+filas_elim = c()
+for (i in c(2:length(n_despues))){
+  filas_elim = c(filas_elim,n_despues[i-1]-n_despues[i])
+}
+filas_elim
+```
+
+
+### Valor constante (de nuevo)
+
+Solamente se comprueban las categóricas y cuantitativas discretas 
+
+```{r}
+datos = droplevels(datos)
+
+cat_disc = datos[,c(col_cuestionario,"year","IPC","country")]
+
+sapply(cat_disc, function(x) sort(unique(x)))
+```
+
+
+## Visualización datos
+
+Visualización de todas las variables del cuestionario.
+
+```{r}
+library(ggplot2)
+
+nombres = names(datos[col_cuestionario])
+
+for(i in c(1:50)){
+  nombre = nombres[i]
+  valor = c(1,2,3,4,5)
+  frec_rel = as.vector(table(datos[col_cuestionario][nombre])/nrow(datos))
+  aux = data.frame(valor,frec_rel)
+  
+  grafico = ggplot(data=aux, aes(x=valor, y=frec_rel)) +
+  geom_bar(stat="identity", fill="#8fc2be", col="#173331") +
+  labs(title=' ',
+       x=nombre,
+       y='Frecuencia relativa') +
+  theme(plot.title = element_text(hjust=0.5),
+    axis.title.x = element_text(hjust=0.5, margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(hjust=0.5, margin=margin(t=0, r=30, b=0, l=0)))
+  
+  print(grafico)
+}
+
+```
+
+
+
+Se dibujan los gráficos de algunas variables del cuestionario.
+
+```{r}
+valor = c(1,2,3,4,5)
+frec_rel = as.vector(table(datos[col_cuestionario]$AGR3)/nrow(datos))
+aux = data.frame(valor,frec_rel)
+
+ggplot(data=aux, aes(x=valor, y=frec_rel)) +
+  geom_bar(stat="identity", fill="#8fc2be", col="#173331", alpha=0.75) +
+  labs(title=' ',
+       x='AGR3: "Insulto a las personas"', 
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0,0.5)) +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust=0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0))
+    )
+```
+
+
+```{r}
+valor = c(1,2,3,4,5)
+frec_rel = as.vector(table(datos[col_cuestionario]$AGR6)/nrow(datos))
+aux = data.frame(valor,frec_rel)
+
+ggplot(data=aux, aes(x=valor, y=frec_rel)) +
+  geom_bar(stat="identity", fill="#8fc2be", col="#173331", alpha=0.75) +
+  labs(title=' ',
+       x='AGR6: "Tengo buen corazón"', 
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0,0.45)) +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust=0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+```{r}
+valor = c(1,2,3,4,5)
+frec_rel = as.vector(table(datos[col_cuestionario]$OPN3)/nrow(datos))
+aux = data.frame(valor,frec_rel)
+
+ggplot(data=aux, aes(x=valor, y=frec_rel)) +
+  geom_bar(stat="identity", fill="#8fc2be", col="#173331", alpha=0.75) +
+  labs(title=' ',
+       x='OPN3: "Tengo una imaginación vívida"', 
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0,0.6)) +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust=0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+```{r}
+valor = c(1,2,3,4,5)
+frec_rel = as.vector(table(datos[col_cuestionario]$OPN5)/nrow(datos))
+aux = data.frame(valor,frec_rel)
+
+ggplot(data=aux, aes(x=valor, y=frec_rel)) +
+  geom_bar(stat="identity", fill="#8fc2be", col="#173331", alpha=0.75) +
+  labs(title=' ',
+       x='OPN5: "Tengo ideas excelentes"', 
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0,0.4)) +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust=0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+```{r}
+valor = c(1,2,3,4,5)
+frec_rel = as.vector(table(datos[col_cuestionario]$EST7)/nrow(datos))
+aux = data.frame(valor,frec_rel)
+
+ggplot(data=aux, aes(x=valor, y=frec_rel)) +
+  geom_bar(stat="identity", fill="#8fc2be", col="#173331", alpha=0.75) +
+  labs(title=' ',
+       x='EST7: "Cambio mucho mi estado de ánimo"', 
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0,0.25)) +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust=0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+En este punto se recomienda guardar en un archivo el dataframe "datos", eliminar el environment y cargar directamente el archivo de los datos para liberar memoria.
+
+```{r}
+# **ATENCIÓN**
+# Ejecutar este chunk sólo si se desea guardar el dataframe "datos", eliminar el environment y cargar de nuevo los nuevos para liberar memoria
+
+#write.csv(datos, "datos_limpios.csv", row.names = FALSE)
+rm(list = ls())
+datos = read.csv("datos_limpios.csv",sep=",")
+
+# Se comprueba que los formatos sean correctos
+str(datos, list.len = Inf)
+
+# Agrupamos las columnas
+col_cuestionario = names(datos[,c(1:50)])
+col_tiempo = names(datos[,c(51:100,104:106)])
+col_individuo = names(datos[,c(101:103,107:110)])
+```
+
+
+
+
+# **REDUCCIÓN DE LA DIMENSIÓN**
+
+Se calcula matriz de correlaciones policóricas
+
+```{r, warning=F}
+library(psych)
+
+R = polychoric(datos[col_cuestionario])
+R$rho
+```
+
+
+Se efectúa el test de esfericidad de Bartlett
+
+```{r}
+cortest.bartlett(R$rho, n=nrow(datos))
+```
+
+
+Se calcula el índice KMO
+
+```{r}
+KMO(R$rho)
+```
+
+
+
+## **Análisis de Componentes Principales**
+
+Se grafica el screeplot
+
+```{r}
+library(ggplot2)
+
+autovalores = sort(eigen(R$rho)$values,decreasing=TRUE)
+índice = c(1:50)
+tabla = data.frame(índice,autovalores)
+
+
+ggplot(data = tabla) +
+  geom_point(aes(x = índice, y = autovalores), col = "#3E7A89") +
+  geom_line(aes(x = índice, y = autovalores), col = "#3E7A89", alpha=0.5) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "#3B4041", alpha=0.5) +
+  labs(title=' ', 
+       x='Número de componentes o factores',
+       y='Autovalor') +
+  scale_y_continuous(limits = c(0,12.5)) +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust = 0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust = 0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+Se grafica el porcentaje de variabilidad explicada acumulada
+
+```{r}
+var_exp = cumsum(autovalores)/sum(autovalores)
+indice = c(1:50)
+tabla2 = data.frame(indice,var_exp)
+
+ggplot(data = tabla2) +
+  geom_point(aes(x = indice, y = var_exp), col = "#D1742C") +
+  geom_line(aes(x = indice, y = var_exp), col = "#D1742C", alpha=0.5) +
+  labs(title=' ',
+       x='Número de componentes o factores',
+       y='Porcentaje de variabilidad explicada acumulada') +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust=0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+### PCA con 5 componentes sin rotación
+
+```{r}
+pca_none = principal(datos[col_cuestionario], nfactors=5, cor="poly", rotate="none")
+pca_none
+```
+
+
+```{r}
+print(pca_none,cut=0.3,digits=3)
+```
+
+
+
+### PCA con 5 componentes y rotación varimax
+
+```{r}
+pca_varimax = principal(datos[col_cuestionario], nfactors=5, cor="poly", rotate="varimax")
+pca_varimax
+```
+
+
+```{r}
+print(pca_varimax,cut=0.3,digits=3)
+```
+
+
+### PCA con 5 componentes y rotación promax
+
+```{r}
+pca_promax = principal(datos[col_cuestionario], nfactors=5, cor="poly", rotate="promax")
+pca_promax
+```
+
+
+```{r}
+print(pca_promax,cut=0.3,digits=3)
+```
+
+
+
+
+
+## **Análisis factorial**
+
+
+Se grafica el screeplot
+
+```{r}
+library(ggplot2)
+
+autovalores = sort(eigen(R$rho)$values,decreasing=TRUE)
+índice = c(1:50)
+tabla = data.frame(índice,autovalores)
+
+
+ggplot(data = tabla) +
+  geom_point(aes(x = índice, y = autovalores), col = "#3E7A89") +
+  geom_line(aes(x = índice, y = autovalores), col = "#3E7A89", alpha=0.5) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "#3B4041", alpha=0.5) +
+  labs(title=' ', # Screeplot
+       x='Número de componentes o factores',
+       y='Autovalor') +
+  scale_y_continuous(limits = c(0,12.5)) +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust = 0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust = 0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+Se grafica el porcentaje de variabilidad explicada acumulada
+
+```{r}
+var_exp = cumsum(autovalores)/sum(autovalores)
+indice = c(1:50)
+tabla2 = data.frame(indice,var_exp)
+
+ggplot(data = tabla2) +
+  geom_point(aes(x = indice, y = var_exp), col = "#D1742C") +
+  geom_line(aes(x = indice, y = var_exp), col = "#D1742C", alpha=0.5) +
+  labs(title=' ',
+       x='Número de componentes o factores',
+       y='Porcentaje de variabilidad explicada acumulada') +
+  theme(
+    #axis.text.x = element_text(size = 12),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust=0.5),
+    axis.title.x = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=25, r=0, b=0, l=0)),
+    axis.title.y = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+
+### Análisis factorial con 5 factores sin rotación
+
+```{r}
+fa_none = fa(datos[col_cuestionario],nfactors=5,fm="minres",cor="poly",rotate="none")
+fa_none
+```
+
+
+```{r}
+print(fa_none,cut=0.3,digits=3)
+```
+
+
+### Análisis factorial con 5 factores y rotación varimax
+
+```{r}
+fa_varimax = fa(datos[col_cuestionario],nfactors=5,fm="minres",cor="poly", rotate="varimax")
+fa_varimax
+```
+
+
+```{r}
+print(fa_varimax,cut=0.3,digits=3)
+```
+
+
+### Análisis factorial con 5 factores y rotación promax
+
+```{r}
+fa_promax = fa(datos[col_cuestionario],nfactors=5,fm="minres",cor="poly", rotate="promax")
+fa_promax
+```
+
+
+```{r}
+print(fa_promax,cut=0.3,digits=3)
+```
+
+
+
+### Comunalidades del análisis factorial con 5 factores
+
+```{r}
+comunalidades = fa_promax$communality
+sort(comunalidades)
+summary(comunalidades)
+```
+
+
+
+
+## **Clustering jerárquico**
+
+Se obtiene la matriz de distancias.
+
+```{r}
+D = 1 - abs(R$rho)
+D = as.dist(D) # Formato necesario
+D
+```
+
+
+```{r}
+library(cluster)
+library(factoextra)
+
+ic = hclust(D, method="ward.D2")
+
+fviz_dend(ic, k=5, show_labels = TRUE,
+          main=" ",                       
+          ylab="Distancia") +
+  theme(#axis.text.y = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.y = element_text(#size=15,
+                                    hjust=0.5, 
+                                    margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+Se calcula la correlación cofenética.
+
+```{r}
+# Matriz de distancias cofenética
+D_cof = cophenetic(ic)
+
+# Correlación cofenética
+cor(D,D_cof)
+```
+
+
+Se calcula la silueta media.
+
+```{r}
+clusters = cutree(ic, k=5)
+siluetas = silhouette(clusters, D)
+rownames(siluetas) = col_cuestionario
+
+mean(siluetas[,"sil_width"])
+```
+
+Se grafican todas las siluetas.
+
+```{r}
+fviz_silhouette(siluetas,
+                main=" ",
+                ylab="Silueta",
+                label=T) +
+  labs(fill="Clúster", colour="Clúster") +
+  theme(
+    axis.text.x = element_text(angle = 90, 
+                               hjust = 1),
+    #axis.text.y = element_text(size = 12),
+    plot.title = element_text(hjust = 0.5),
+    axis.title.y = element_text(#size=15,
+                                hjust=0.5, 
+                                margin=margin(t=0, r=30, b=0, l=0)),
+    legend.title = element_text(hjust = 0.5))
+```
+
+
+
+
+# **CLUSTERING**
+
+Se escogen las nuevas coordenadas de los individuos aportadas por el análisis factorial con rotación promax para realizar el clustering.
+
+```{r}
+coords = fa_promax$scores
+coords = as.data.frame(coords)
+colnames(coords) = c("EXT","EST","AGR","CSN","OPN")
+```
+
+
+Se realizan los histogramas de cada factor.
+
+```{r}
+library(ggplot2)
+
+ggplot(data = coords, aes(x = EXT, y = after_stat(density))) +
+  geom_histogram(binwidth = 0.5, fill = "#8fc2be", color = "#173331", alpha = 0.75) +
+  labs(title=' ',
+       x='Extraversión',
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0, 0.4)) +
+  theme(
+        #axis.text.x = element_text(size = 12),
+        #axis.text.y = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=25, r=0, b=0, l=0)),
+        axis.title.y = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+```{r}
+ggplot(data = coords, aes(x = EST, y = after_stat(density))) +
+  geom_histogram(binwidth = 0.5, fill = "#8fc2be", color = "#173331", alpha = 0.75) +
+  labs(title=' ',
+       x='Neuroticismo',
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0, 0.4)) +
+  theme(
+        #axis.text.x = element_text(size = 12),
+        #axis.text.y = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=25, r=0, b=0, l=0)),
+        axis.title.y = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+```{r}
+ggplot(data = coords, aes(x = AGR, y = after_stat(density))) +
+  geom_histogram(binwidth = 0.5, fill = "#8fc2be", color = "#173331", alpha = 0.75) +
+  labs(title=' ',
+       x='Amabilidad',
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0, 0.5)) +
+  theme(
+        #axis.text.x = element_text(size = 12),
+        #axis.text.y = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=25, r=0, b=0, l=0)),
+        axis.title.y = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+```{r}
+ggplot(data = coords, aes(x = CSN, y = after_stat(density))) +
+  geom_histogram(binwidth = 0.5, fill = "#8fc2be", color = "#173331", alpha = 0.75) +
+  labs(title=' ',
+       x='Consciencia',
+       y='Frecuencia relativa') +
+  scale_y_continuous(limits = c(0, 0.4)) +
+  theme(
+        #axis.text.x = element_text(size = 12),
+        #axis.text.y = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=25, r=0, b=0, l=0)),
+        axis.title.y = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+```{r}
+ggplot(data = coords, aes(x = OPN, y = after_stat(density))) +
+  geom_histogram(binwidth = 0.5, fill = "#8fc2be", color = "#173331", alpha = 0.75) +
+  labs(title=' ',
+       x='Intelectualidad',
+       y='Frecuencia relativa') +
+#  scale_y_continuous(limits = c(0, 0.4)) +
+  theme(
+        #axis.text.x = element_text(size = 12),
+        #axis.text.y = element_text(size = 12),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=25, r=0, b=0, l=0)),
+        axis.title.y = element_text(#size=15,
+                                    hjust = 0.5, 
+                                    margin=margin(t=0, r=30, b=0, l=0)))
+```
+
+
+
+Se realizan los gráficos de dispersión
+
+```{r}
+panel.hist = function(x, ...)
+{
+    usr = par("usr")
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h = hist(x, plot = FALSE)
+    breaks = h$breaks; nB = length(breaks)
+    y = h$counts; y = y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, ...)
+}
+
+pairs(coords, pch=20, cex=0.5, col="#8fc2be",
+      diag.panel = panel.hist,
+      labels = c("Extraversión","Neuroticismo","Amabilidad","Consciencia","Intelectualidad"))
+```
+
+
+En este punto, se recomienda cargar los resultados del MClust, que se encuentran en el archivo "mclust_scores.RData", dado que el tiempo de ejecución del MClust es elevado.
+
+```{r}
+# **ATENCIÓN**
+# Ejecutar la opción A si se desean tener los resultados del MClust de forma inmediata.
+# Ejecutar la opción B si se desea realizar el MClust (el tiempo de ejecución es elevado)
+
+
+library(mclust)
+
+# Opción A:
+load("mclust_scores.RData")
+
+# Opción B:
+#mclust_scores = Mclust(coords,G=1:32,verbose=T)
+
+```
+
+
+Se visualizan los resultados del MClust.
+
+```{r}
+mclust_scores
+```
+
+
+```{r}
+mclust_scores$G
+```
+
+
+```{r}
+mclust_scores$modelName
+```
+
+
+Se dibuja el BIC de todos las posibles configuraciones.
+
+```{r}
+plot(mclust_scores$BIC)
+```
+
+
+Se calculan los tamaños de cada grupo.
+
+```{r}
+# Tamaño absoluto
+table(mclust_scores$classification)
+```
+
+
+```{r}
+#Tamaño relativo
+round(table(mclust_scores$classification)/nrow(coords),4)
+```
+
+
+```{r}
+medias_cluster = coords
+medias_cluster$grupo = mclust_scores$classification
+medias_cluster = as.data.frame(t(mclust_scores$parameters$mean))
+tamaños = as.vector(round(table(mclust_scores$classification)/nrow(coords),4))
+medias_cluster$tamano = tamaños
+print(medias_cluster)
+```
+
+
+Se guardan las medias de los cluster junto a su tamaño para realizar el mapa de calor en Excel.
+
+```{r}
+#write.csv(medias_cluster, "medias_cluster.csv", row.names = FALSE)
+```
+
+Alternativamente, se puede copiar el output, pegarlo en un bloc de datos para insertar un separador entre los datos, pegar esto en Word para crear una tabla y finalmente, pegar la tabla en Excel. 
+
+
+
+
+
+
+
+
+
+
